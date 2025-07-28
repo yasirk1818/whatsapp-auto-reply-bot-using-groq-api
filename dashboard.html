@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Multi-Device Bot Dashboard</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 20px; }
+        .header { text-align: center; margin-bottom: 10px; }
+        h1 { color: #1c1e21; }
+        .header-controls { text-align: center; margin-bottom: 20px; }
+        a { color: #007bff; text-decoration: none; }
+        a.logout { color: #dc3545; font-weight: bold; }
+        #welcome-user { color: #333; font-weight: bold; }
+        .add-device-form { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin: 0 auto 20px auto; max-width: 500px; display: flex; gap: 10px; }
+        input[type="text"] { flex-grow: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 16px; }
+        button { padding: 10px 20px; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; transition: background-color 0.2s; }
+        .btn-primary { background-color: #007bff; color: white; }
+        .btn-primary:hover { background-color: #0056b3; }
+        #devices-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; }
+        .device-card { background: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
+        .device-header { display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; border-bottom: 1px solid #eee; }
+        .device-name { font-weight: bold; font-size: 1.2em; }
+        .status { font-weight: bold; padding: 5px 10px; border-radius: 15px; color: white; font-size: 0.8em; }
+        .status.READY { background-color: #28a745; }
+        .status.SCAN_QR { background-color: #ffc107; color: #333; }
+        .status.DISCONNECTED { background-color: #dc3545; }
+        .status.LOADING { background-color: #6c757d; }
+        .device-body { padding: 20px; text-align: center; min-height: 150px; display: flex; align-items: center; justify-content: center; flex-direction: column; }
+        .qr-code img { border: 5px solid #eee; border-radius: 8px; max-width: 100%; }
+        .device-footer { background-color: #f8f9fa; padding: 15px 20px; border-top: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; }
+        .btn-toggle.on { background-color: #dc3545; color: white; }
+        .btn-toggle.off { background-color: #28a745; color: white; }
+        .btn-delete { background-color: transparent; color: #dc3545; border: 1px solid #dc3545; }
+        .btn-delete:hover { background-color: #dc3545; color: white; }
+        .btn-connect { background-color: #28a745; color: white; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Multi-Device WhatsApp Bot Dashboard</h1>
+        <div class="header-controls">
+            <span id="welcome-user"></span> | <a href="/logout" class="logout">Logout</a>
+        </div>
+    </div>
+
+    <div class="add-device-form">
+        <input type="text" id="new-device-name" placeholder="Naye device ka naam (e.g., Personal)"/>
+        <button id="add-device-btn" class="btn-primary">Add New Device</button>
+    </div>
+
+    <div id="devices-container"></div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+
+        const devicesContainer = document.getElementById('devices-container');
+        const newDeviceNameInput = document.getElementById('new-device-name');
+        const addDeviceBtn = document.getElementById('add-device-btn');
+        const welcomeUserEl = document.getElementById('welcome-user');
+
+        // Function to create or update a device card
+        function renderOrUpdateDevice(device) {
+            let card = document.getElementById(`device-${device.sessionId}`);
+            if (!card) {
+                card = document.createElement('div');
+                card.className = 'device-card';
+                card.id = `device-${device.sessionId}`;
+                devicesContainer.appendChild(card);
+            }
+
+            let cardBodyHtml = '';
+            let cardFooterHtml = '';
+
+            // Card Body (QR, Status, or Connect Button)
+            switch (device.status) {
+                case 'SCAN_QR':
+                    cardBodyHtml = `<div class="qr-code"><img src="${device.qrCode}" alt="QR Code"></div><p>Please scan the QR code.</p>`;
+                    break;
+                case 'READY':
+                    cardBodyHtml = `<p style="color: green;">Device is connected and ready to use!</p>`;
+                    break;
+                case 'LOADING':
+                    cardBodyHtml = `<p>Connecting... Please wait.</p>`;
+                    break;
+                case 'DISCONNECTED':
+                default:
+                    cardBodyHtml = `
+                        <p>Device is disconnected.</p>
+                        <button class="btn-connect" data-session-id="${device.sessionId}">Connect</button>
+                    `;
+                    break;
+            }
+
+            // Card Footer (Controls) - Only show if connected
+            if (device.status === 'READY') {
+                const toggleState = device.isBotEnabled ? 'on' : 'off';
+                const toggleText = device.isBotEnabled ? 'Bot OFF' : 'Bot ON';
+                cardFooterHtml = `
+                    <button class="btn-toggle ${toggleState}" data-session-id="${device.sessionId}" data-is-enabled="${device.isBotEnabled}">${toggleText}</button>
+                    <button class="btn-delete" data-session-id="${device.sessionId}">Delete</button>
+                `;
+            } else {
+                // For all other statuses, show a disabled-looking delete button
+                 cardFooterHtml = `
+                    <div></div>
+                    <button class="btn-delete" data-session-id="${device.sessionId}">Delete</button>
+                `;
+            }
+
+            card.innerHTML = `
+                <div class="device-header">
+                    <span class="device-name">${device.name}</span>
+                    <span class="status ${device.status}">${device.status}</span>
+                </div>
+                <div class="device-body">${cardBodyHtml}</div>
+                <div class="device-footer">${cardFooterHtml}</div>
+            `;
+        }
+        
+        // === SOCKET.IO EVENTS ===
+        socket.on('connect', () => { socket.emit('get_initial_devices'); });
+
+        socket.on('initial_devices', ({ devices, username }) => {
+            welcomeUserEl.textContent = `Welcome, ${username}`;
+            devicesContainer.innerHTML = '';
+            if (devices.length === 0) {
+                devicesContainer.innerHTML = '<p style="text-align:center;">You have no devices. Add one to get started!</p>';
+            } else {
+                devices.forEach(renderOrUpdateDevice);
+            }
+        });
+        
+        socket.on('device_update', renderOrUpdateDevice);
+
+        socket.on('new_device_added', (device) => {
+            if (devicesContainer.querySelector('p')) devicesContainer.innerHTML = '';
+            renderOrUpdateDevice(device);
+        });
+
+        socket.on('device_deleted', ({ sessionId }) => {
+            const card = document.getElementById(`device-${sessionId}`);
+            if (card) card.remove();
+            if (devicesContainer.children.length === 0) {
+                devicesContainer.innerHTML = '<p style="text-align:center;">You have no devices. Add one to get started!</p>';
+            }
+        });
+
+        // === UI EVENTS ===
+        addDeviceBtn.addEventListener('click', () => {
+            const name = newDeviceNameInput.value.trim();
+            if (name) {
+                socket.emit('add_device', { name });
+                newDeviceNameInput.value = '';
+            } else {
+                alert('Please enter a name for the device.');
+            }
+        });
+
+        devicesContainer.addEventListener('click', (e) => {
+            const button = e.target;
+            const sessionId = button.dataset.sessionId;
+            if (!sessionId) return;
+
+            // Manual Connect Button
+            if (button.classList.contains('btn-connect')) {
+                socket.emit('connect_device', { sessionId });
+            }
+
+            // Toggle Bot Button
+            if (button.classList.contains('btn-toggle')) {
+                const isCurrentlyEnabled = button.dataset.isEnabled === 'true';
+                socket.emit('toggle_bot', { sessionId, isEnabled: !isCurrentlyEnabled });
+            }
+
+            // Delete Button
+            if (button.classList.contains('btn-delete')) {
+                if (confirm('Are you sure you want to permanently delete this device?')) {
+                    socket.emit('delete_device', { sessionId });
+                }
+            }
+        });
+    </script>
+</body>
+</html>
