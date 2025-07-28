@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Login - WhatsApp Bot</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .login-container { background: #fff; padding: 40px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); width: 320px; text-align: center; }
+        h1 { margin-bottom: 24px; color: #1c1e21; }
+        input { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; border: none; background-color: #00aaff; color: white; border-radius: 6px; font-size: 16px; cursor: pointer; }
+        .register-link { margin-top: 20px; }
+        .register-link a { color: #00aaff; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <h1>Login</h1>
+        <form action="/login" method="POST">
+            <input type="text" name="username" placeholder="Username" required>
+            <input type="password" name="password" placeholder="Password" required>
+            <button type="submit">Login</button>
+        </form>
+        <div class="register-link">
+            <p>Account nahi hai? <a href="/register">Register karein</a></p>
+        </div>
+    </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const params = new URLSearchParams(window.location.search);
+        const messageBox = document.createElement('div');
+        
+        if (params.get('status') === 'registered') {
+            messageBox.className = 'message-box success';
+            messageBox.textContent = 'Registration successful! Please login.';
+            // Form se pehle message box add karein
+            const form = document.querySelector('form');
+            form.parentNode.insertBefore(messageBox, form);
+        }
+    });
+</script>
+</body>
+</html>
